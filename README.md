@@ -11,3 +11,5 @@ ts_name - name of HLS fragment you need to analyze
 -v - verbose output
 
 See output examples in Wiki.
+
+This script is released under GPLv3 license: http://www.gnu.org/licenses/gpl.html
