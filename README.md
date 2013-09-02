@@ -9,6 +9,7 @@ Run it as:
 ts_name - name of HLS fragment you need to analyze 
 
 -v - verbose output
+
 --output - name of output directory for PES packets info.
 
 Packets info includes all PES packets for all streams of current transport stream.
