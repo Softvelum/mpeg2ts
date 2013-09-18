@@ -31,6 +31,7 @@ PES_AUDIO_STREAM_END   = 0b1101_1111
 @cur_pes_packet_offset = {}
 @cur_pes_packet_size = {}
 @pes_chunks_info={}
+
 @output_dir = nil
 MPEG_STREAM_TYPES={
   0x00 => "ITU-T | ISO/IEC Reserved",
@@ -87,6 +88,12 @@ def processProgramAssociationTable(buffer)
 
   table_id = buffer[0]
   raise "only program association section supported" unless table_id == 0
+
+  raise "wrong section syntax indicator" unless getBSLBFBit(buffer[1], 0)  == 0x1
+  raise "wrong file format" unless getBSLBFBit(buffer[1], 1)  == 0x0
+  raise "wrong file format(reserved should be 0b11)" unless getInteger(buffer[1], 2,2)  == 0b11
+  raise "wrong section syntax indicator" unless getInteger(buffer[1], 4, 2) == 0x00 # This is a 12-bit field, the first two bits of which shall be '00'.
+
 
   section_length = getInteger(buffer[1], 6, 2) << 8
   section_length+= buffer[2]
@@ -207,7 +214,6 @@ def processAdaptationField(b)
     pcr_program_clock_reference_base+= getBSLBFBit(b[6], 0)
     pcr_program_clock_reference_extension = ((getBSLBFBit b[6], 7) << 8) + b[7]
     p "pid=#{@cur_pid} pcr_program_clock_reference_base=#{pcr_program_clock_reference_base} pcr_program_clock_reference_extension=#{pcr_program_clock_reference_extension} random_access_indicator=#{random_access_indicator}" if @verbose_mode
-
     raise "pcr must grow all the time" if @cur_pcr_program_clock_reference_base > pcr_program_clock_reference_base
     @cur_pcr_program_clock_reference_base = pcr_program_clock_reference_base
   end
@@ -217,6 +223,7 @@ end
 
 # refer to 2.4.3.6
 def processElementaryStreams buffer, adaptation_field_exist, payload_unit_start_indicator
+
   offset = 0
   if adaptation_field_exist
     offset = processAdaptationField(buffer)
@@ -262,7 +269,7 @@ def processElementaryStreams buffer, adaptation_field_exist, payload_unit_start_
     #additional_copy_info_flag 1 bslbf
     raise "we don't support PES additional copy info" unless 0b00 == getBSLBFBit(buffer[7], 5)
     #PES_CRC_flag 1 bslbf
-    raise "we don't support PES СКС" unless 0b00 == getBSLBFBit(buffer[7], 6)
+    raise "we don't support PES CRC" unless 0b00 == getBSLBFBit(buffer[7], 6)
     #PES_extension_flag 1 bslbf
     raise "we don't support PES extension" unless 0b00 == getBSLBFBit(buffer[7], 7)
     #PES_header_data_length 8 uimsbf
@@ -275,14 +282,26 @@ def processElementaryStreams buffer, adaptation_field_exist, payload_unit_start_
       pts = getInteger(buffer[9], 4, 3) << 29
       #    marker_bit 1 bslbf
       #    PTS [29..15] 15 bslbf
-      pts = pts | ((buffer[10] * 0x100 + (getInteger(buffer[11], 0, 7) << 1) )  << 14)
+      pts = pts | (buffer[10] * 0x100 + (getInteger(buffer[11], 0, 7) << 1) )  << 14
       #    marker_bit 1 bslbf
       #    PTS [14..0] 15 bslbf
-      pts = pts | (buffer[12] * 0x100 + (getInteger(buffer[13], 0, 7) << 1))
+      pts = pts | ((buffer[12] * 0x100 + (getInteger(buffer[13], 0, 7) << 1)) >> 1)
       #    marker_bit 1 bslbf
-      p "pid=#{@cur_pid} pts=#{pts}" if @verbose_mode
 
-      raise "DTS packet is not supported" if pts_dts_flags == 0x11
+      if pts_dts_flags == 0b11
+        #    PTS [32..30] 3 bslbf
+        dts = getInteger(buffer[14], 4, 3) << 29
+        #    marker_bit 1 bslbf
+        #    PTS [29..15] 15 bslbf
+        dts = dts | (buffer[15] * 0x100 + (getInteger(buffer[16], 0, 7) << 1) )  << 14
+        #    marker_bit 1 bslbf
+        #    PTS [14..0] 15 bslbf
+        dts = dts | ((buffer[17] * 0x100 + (getInteger(buffer[18], 0, 7) << 1)) >> 1)
+        #    marker_bit 1 bslbf
+        p "pid=#{@cur_pid} pts=#{pts} dts=#{dts}" if @verbose_mode
+      else
+        p "pid=#{@cur_pid} pts=#{pts}" if @verbose_mode
+      end
     end
 
     @cur_pes_packet_offset[@cur_pid] = 3 + pes_header_data_length # 3 here mean distance from PES_packet_length to PES_header_data_length
@@ -305,7 +324,6 @@ def processElementaryStreams buffer, adaptation_field_exist, payload_unit_start_
       descriptor[:file] = File.open "#{@output_dir}/#{@cur_pid}/#{descriptor[:count]}", 'wb'
     end
   end
-  @pes_chunks_info[@cur_pid]
 
   if @output_payload
     @pes_chunks_info[@cur_pid][:file].write buffer.pack 'C*'
