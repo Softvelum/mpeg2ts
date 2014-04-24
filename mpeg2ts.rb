@@ -89,7 +89,7 @@ def processProgramAssociationTable(buffer)
   table_id = buffer[0]
   raise "only program association section supported" unless table_id == 0
 
-  raise "wrong section syntax indicator" unless getBSLBFBit(buffer[1], 0)  == 0x1
+  #raise "wrong section syntax indicator" unless getBSLBFBit(buffer[1], 0)  == 0x1
   raise "wrong file format" unless getBSLBFBit(buffer[1], 1)  == 0x0
   raise "wrong file format(reserved should be 0b11)" unless getInteger(buffer[1], 2,2)  == 0b11
   raise "wrong section syntax indicator" unless getInteger(buffer[1], 4, 2) == 0x00 # This is a 12-bit field, the first two bits of which shall be '00'.
@@ -222,17 +222,11 @@ def processAdaptationField(b)
 end
 
 # refer to 2.4.3.6
-def processElementaryStreams buffer, adaptation_field_exist, payload_unit_start_indicator
-
-  offset = 0
-  if adaptation_field_exist
-    offset = processAdaptationField(buffer)
-    buffer = buffer.slice offset..-1
-  end
-  return if buffer.empty?
+def processElementaryStreams buffer, payload_unit_start_indicator
 
   if payload_unit_start_indicator
-    raise "Incorrect PES package" unless ((!@cur_pes_packet_offset[@cur_pid]) || @cur_pes_packet_offset[@cur_pid] == @cur_pes_packet_size[@cur_pid])
+    raise "Incorrect PES package" unless ((!@cur_pes_packet_offset[@cur_pid]|| 0 == @cur_pes_packet_size[@cur_pid]) || @cur_pes_packet_offset[@cur_pid] == @cur_pes_packet_size[@cur_pid])
+    #p "Incorrect PES package" unless ((!@cur_pes_packet_offset[@cur_pid]) || @cur_pes_packet_offset[@cur_pid] == @cur_pes_packet_size[@cur_pid])
 
     packet_start_code_prefix = buffer[0] * 0x10000 + buffer[1] * 0x100 + buffer[2]
 
@@ -279,25 +273,40 @@ def processElementaryStreams buffer, adaptation_field_exist, payload_unit_start_
       raise "PTS_DTS packet invalid" unless pts_dts_flags == getInteger(buffer[9], 0, 4)
 
       #    PTS [32..30] 3 bslbf
-      pts = getInteger(buffer[9], 4, 3) << 29
+      pts = getInteger(buffer[9], 4, 3) << 30
+
       #    marker_bit 1 bslbf
+      raise "invalid PTS marker bit" unless 0b01 == getBSLBFBit(buffer[9], 7)
+
       #    PTS [29..15] 15 bslbf
       pts = pts | (buffer[10] * 0x100 + (getInteger(buffer[11], 0, 7) << 1) )  << 14
+
       #    marker_bit 1 bslbf
+      raise "invalid PTS marker bit" unless 0b01 == getBSLBFBit(buffer[11], 7)
+
       #    PTS [14..0] 15 bslbf
       pts = pts | ((buffer[12] * 0x100 + (getInteger(buffer[13], 0, 7) << 1)) >> 1)
+
       #    marker_bit 1 bslbf
+      raise "invalid PTS marker bit" unless 0b01 == getBSLBFBit(buffer[13], 7)
+
 
       if pts_dts_flags == 0b11
         #    PTS [32..30] 3 bslbf
-        dts = getInteger(buffer[14], 4, 3) << 29
+        dts = getInteger(buffer[14], 4, 3) << 30
+
+        raise "invalid DTS marker bit" unless 0b01 == getBSLBFBit(buffer[14], 7)
         #    marker_bit 1 bslbf
         #    PTS [29..15] 15 bslbf
         dts = dts | (buffer[15] * 0x100 + (getInteger(buffer[16], 0, 7) << 1) )  << 14
+
+        raise "invalid DTS marker bit" unless 0b01 == getBSLBFBit(buffer[16], 7)
         #    marker_bit 1 bslbf
         #    PTS [14..0] 15 bslbf
         dts = dts | ((buffer[17] * 0x100 + (getInteger(buffer[18], 0, 7) << 1)) >> 1)
         #    marker_bit 1 bslbf
+        raise "invalid DTS marker bit" unless 0b01 == getBSLBFBit(buffer[18], 7)
+
         p "pid=#{@cur_pid} pts=#{pts} dts=#{dts}" if @verbose_mode
       else
         p "pid=#{@cur_pid} pts=#{pts}" if @verbose_mode
@@ -330,8 +339,7 @@ def processElementaryStreams buffer, adaptation_field_exist, payload_unit_start_
   end
 
   @cur_pes_packet_offset[@cur_pid] += buffer.size
-  raise "Incorrect PES package" if @cur_pes_packet_offset[@cur_pid] > @cur_pes_packet_size[@cur_pid]
-
+  raise "Incorrect PES package #{@cur_pes_packet_offset[@cur_pid]} #{@cur_pes_packet_size[@cur_pid]}" if 0 != @cur_pes_packet_size[@cur_pid] && @cur_pes_packet_offset[@cur_pid] > @cur_pes_packet_size[@cur_pid]
   return
 end
 
@@ -358,28 +366,44 @@ def processMPEG2TSBlock(buffer)
   end
   p "PUSI=#{payload_unit_start_indicator} PID=#{pid} AFC=#{adaptation_field_control} CC=#{continuity_counter}" if @verbose_mode
 
+  raise "this adoptation field value is not supported" unless (adaptation_field_control != 1 || adaptation_field_control != 3)
+
   if !@pid_stats[pid]
     @pid_stats[pid] = 1
   elsif
     @pid_stats[pid]+= 1
   end
+
   if @first_block
     p "first block MUST be PAM block" unless pid == 0
     return unless pid == 0
     @first_block = false
-    raise "Adoptation field should not exists for PAM" unless adaptation_field_control == 0x1 # 01 = no adaptation fields, payload only
+    #raise "Adoptation field should not exists for PAM" unless adaptation_field_control == 0x1 # 01 = no adaptation fields, payload only
     raise "payload_unit_start_indicator MUST be 1 for the first PAT section" unless payload_unit_start_indicator == 0x1
 
-    b.slice! 0..4 # lets remove Transport stream header the first 4 bytes of Transport stream packet + 1 pointer offset byte
-                                                                                              # see Table 2-29 for "Program specific information pointer"
+    b.slice! 0..3 # lets remove Transport stream header the first 4 bytes of Transport stream packet
+                                                                                               # see Table 2-29 for "Program specific information pointer"
+    if adaptation_field_control > 1
+     offset = processAdaptationField(b)
+     b = b.slice offset..-1
+    end
+
+    b.delete_at 0 # lets remove pointer offset byte
 
     processProgramAssociationTable b
   elsif not @program_map_processed
     raise "Program map MUST be the second section for this implementation" unless pid == @program_map_pid
     raise "payload_unit_start_indicator MUST be 1 for the first PAT section" unless payload_unit_start_indicator == 0x1
 
-    b.slice! 0..4 # lets remove Transport stream header the first 4 bytes of Transport stream packet + 1 pointer offset byte
+    b.slice! 0..3 # lets remove Transport stream header the first 4 bytes of Transport stream packet
                   # see Table 2-29 for "Program specific information pointer"
+
+    if adaptation_field_control > 1
+     offset = processAdaptationField(b)
+     b = b.slice offset..-1
+    end
+
+    b.delete_at 0 # lets remove pointer offset byte
 
     processProgramMap b
     @program_map_processed = true
@@ -387,10 +411,15 @@ def processMPEG2TSBlock(buffer)
     unless @es_info[@cur_pid]
       return
     end
-    raise "this adoptation field value is not supported" unless (adaptation_field_control != 1 || adaptation_field_control != 3)
+
     b.slice! 0..3 # lets remove Transport stream header the first 4 bytes of Transport stream packet
 
-    processElementaryStreams b, adaptation_field_control > 1, payload_unit_start_indicator == 1 # 2 and 3 contains payload
+    if adaptation_field_control > 1
+     offset = processAdaptationField(b)
+     b = b.slice offset..-1
+    end
+
+    processElementaryStreams b, payload_unit_start_indicator == 1 # 2 and 3 contains payload
   end
 end
 p "wrong parameter count. add only mpeg2ts input filename" and exit if ARGV.length == 0
