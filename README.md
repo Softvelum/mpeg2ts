@@ -20,5 +20,4 @@ See also output examples in Wiki.
 
 This product is released under MIT license.
 
-Please also take a look at our Nimble HTTP Streamer: https://wmspanel.com/nimble
-It's the HTTP streaming server capable of MP4 transmuxing to VOD HLS, UDP MPEG-TS to ABR HLS generation and also re-streaming HLS as edge server.
+Please also take a look at our Nimble HTTP Streamer: https://wmspanel.com/nimble and its MPEG-TS streaming feature set: https://wmspanel.com/nimble/mpeg2ts
