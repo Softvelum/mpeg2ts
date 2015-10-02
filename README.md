@@ -20,4 +20,4 @@ See also output examples in Wiki.
 
 This product is released under MIT license.
 
-Please also take a look at our Nimble HTTP Streamer: https://wmspanel.com/nimble and its MPEG-TS streaming feature set: https://wmspanel.com/nimble/mpeg2ts
+Please also take a look at Nimble Streamer freeware media server (https://wmspanel.com/nimble) and its MPEG-TS streaming feature set (https://wmspanel.com/nimble/mpeg2ts).
