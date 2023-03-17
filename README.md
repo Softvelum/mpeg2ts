@@ -17,7 +17,7 @@ Packets info includes all PES packets for all streams of current transport strea
 See also output examples in Wiki.
 
 
-This code was used during MPEG-TS streaming feature set development (https://wmspanel.com/nimble/mpeg2ts) in Nimble Streamer media server (https://wmspanel.com/nimble).
+This code was used during [MPEG-TS streaming feature set](https://softvelum.com/nimble/mpegts/) development in [Nimble Streamer media server](https://softvelum.com/nimble/).
 
 
 This product is released under MIT license.
